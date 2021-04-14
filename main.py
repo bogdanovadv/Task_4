@@ -10,18 +10,15 @@ def new_db():
     connection = sqlite3.connect('bot.db')
     cursor = connection.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS users
-                            (id	INTEGER PRIMARY KEY AUTOINCREMENT, user INTEGER NOT NULL,
-                                PRIMARY KEY(id))
+                            (id	INTEGER PRIMARY KEY AUTOINCREMENT, user INTEGER NOT NULL)
                    ''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS categories
                             (id	INTEGER PRIMARY KEY AUTOINCREMENT, category TEXT NOT NULL, user_id INTEGER NOT NULL,
-                            PRIMARY KEY(id),
                             FOREIGN KEY(user_id) REFERENCES users(id))
                    ''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS keywords
                             (id	INTEGER PRIMARY KEY AUTOINCREMENT, keyword TEXT NOT NULL, user_id INTEGER NOT NULL,
-                            PRIMARY KEY(id),
-                            FOREIGN KEY(user_id) REFERENCES users("id"))
+                            FOREIGN KEY(user_id) REFERENCES users(id))
                    ''')
     connection.commit()
     connection.close()
@@ -39,8 +36,8 @@ bot = telebot.TeleBot(telebot_token, parse_mode=None)
 
 def main():
     markup = types.ReplyKeyboardMarkup(True)
-    key1 = types.KeyboardButton('Посмотреть новости')
-    key2 = types.KeyboardButton('Управление подписками')
+    key1 = types.KeyboardButton('Подписки по категориям')
+    key2 = types.KeyboardButton('Подписки по ключевым словам')
     key3 = types.KeyboardButton('Жуть')
     markup.add(key1)
     markup.add(key2)
@@ -52,13 +49,26 @@ def start(message):
     add_user(user_id)
     user_name = message.from_user.username
     bot.send_message(message.chat.id, 'Привет, ' + str(user_name), reply_markup=main())
-
+key_word = False
 @bot.message_handler(content_types=['text'])
+
 def cont(message):
-    if message.text == 'Посмотреть новости':
-        bot.send_message(message.chat.id, 'Типа смотрю новости', reply_markup=main())
-    elif message.text == 'Управление подписками':
-        bot.send_message(message.chat.id, 'Типа управляю подписками', reply_markup=main())
+    if message.text == 'Подписки по категориям':
+        keyboard = telebot.types.ReplyKeyboardMarkup(True)
+        keyboard.row('Посмотреть подписку')
+        keyboard.row('Добавить подписку', 'Удалить подписку')
+        bot.send_message(message.chat.id, "Выберите действие", reply_markup=keyboard)
+    elif message.text == 'Подписки по ключевым словам':
+        keyboard = telebot.types.ReplyKeyboardMarkup(True)
+        keyboard.row('Посмотреть подборку')
+        keyboard.row('Добавить ключевое слово', 'Удалить ключевое слово')
+        bot.send_message(message.chat.id, "Выберите действие", reply_markup=keyboard)
+    elif message.text == 'Добавить ключевое слово':
+        bot.send_message(message.chat.id, "Введите новое ключевое слово:")
+        print(message.chat.id-1)
+
+    elif key_word:
+        bot.send_message(message.chat.id, "ово:")
     else:
         bot.send_message(message.chat.id, 'Я тебя не понимаю', reply_markup=main())
 bot.polling()
