@@ -4,6 +4,7 @@ from newsapi import NewsApiClient
 
 telebot_token = "1794433387:AAGsLnL2AYlbBOoI5SFTuqqzU5ltMQ99P2U"
 news_api_token = "51f3bc1ce6384971b2e00b29d92c5e98"
+category = {'business', 'entertainment', 'general', 'health', 'science', 'sports', 'technology'}
 
 
 def new_db():
@@ -30,6 +31,68 @@ def add_user(id):
     connection.commit()
     connection.close()
 
+def news_category(id):
+    connection = sqlite3.connect('bot.db')
+    cursor = connection.cursor()
+    categories = cursor.execute(f'''SELECT category FROM categories JOIN users ON users.id = user_id WHERE users.user = {id}''').fetchall()
+    set_categories = []
+    for x in categories:
+        set_categories.insert(-1, x[0])
+    connection.commit()
+    connection.close()
+    return set_categories
+
+def news_q(id):
+    connection = sqlite3.connect('bot.db')
+    cursor = connection.cursor()
+    q = cursor.execute(f'''SELECT keyword FROM keywords JOIN users ON users.id = user_id WHERE users.user = {id}''').fetchall()
+    set_q = []
+    for x in q:
+        set_q.insert(-1, x[0])
+    connection.commit()
+    connection.close()
+    return set_q
+
+def del_category(id, category):
+    connection = sqlite3.connect('bot.db')
+    cursor = connection.cursor()
+    cursor.execute(f'''DELETE FROM categories WHERE category = "{category}" and user_id = (SELECT id FROM users WHERE user={id})''')
+    connection.commit()
+    connection.close()
+
+def del_q(id, q):
+    connection = sqlite3.connect('bot.db')
+    cursor = connection.cursor()
+    cursor.execute(f'''DELETE FROM keywords WHERE keyword = "{q}" and user_id = (SELECT id FROM users WHERE user={id})''')
+    connection.commit()
+    connection.close()
+
+def add_category(id, category):
+    connection = sqlite3.connect('bot.db')
+    cursor = connection.cursor()
+    cursor.execute(f'''INSERT INTO categories (category, user_id) VALUES ("{category}", (SELECT id FROM users WHERE user={id}))''')
+    connection.commit()
+    connection.close()
+
+def news_api_q(q):
+    newsapi = NewsApiClient(api_key=news_api_token)
+    all_articles = newsapi.get_everything(q=q)
+    return all_articles
+
+def news_api_category(category):
+    newsapi = NewsApiClient(api_key=news_api_token)
+    top_headlines = newsapi.get_top_headlines(category=category)
+    return top_headlines
+
+def add_keyboard(keyboard, categories):
+    category = {'business', 'entertainment', 'general', 'health', 'science', 'sports', 'technology'}
+    s = set(category) & set(categories)
+    print(s)
+    for x in s:
+        print(x)
+        keyboard.row(x)
+    return keyboard
+
 new_db()
 
 bot = telebot.TeleBot(telebot_token, parse_mode=None)
@@ -38,7 +101,6 @@ def main():
     markup = types.ReplyKeyboardMarkup(True)
     key1 = types.KeyboardButton('Подписки по категориям')
     key2 = types.KeyboardButton('Подписки по ключевым словам')
-    key3 = types.KeyboardButton('Жуть')
     markup.add(key1)
     markup.add(key2)
     return markup
@@ -49,9 +111,8 @@ def start(message):
     add_user(user_id)
     user_name = message.from_user.username
     bot.send_message(message.chat.id, 'Привет, ' + str(user_name), reply_markup=main())
-key_word = False
-@bot.message_handler(content_types=['text'])
 
+@bot.message_handler(content_types=['text'])
 def cont(message):
     if message.text == 'Подписки по категориям':
         keyboard = telebot.types.ReplyKeyboardMarkup(True)
@@ -66,33 +127,43 @@ def cont(message):
     elif message.text == 'Добавить ключевое слово':
         bot.send_message(message.chat.id, "Введите новое ключевое слово:")
         print(message.chat.id-1)
-
-    elif key_word:
-        bot.send_message(message.chat.id, "ово:")
+    elif message.text == 'Посмотреть подписку' or message.text == 'Удалить подписку':
+        keyboard = telebot.types.ReplyKeyboardMarkup(True)
+        for x in news_category(message.from_user.id):
+            if message.text.find("Удалить") == 0:
+                x = "Удалить " + x
+            keyboard.row(x)
+        bot.send_message(message.chat.id, "Выберите подписку", reply_markup=keyboard)
+    elif message.text == 'Посмотреть подборку' or message.text == 'Удалить ключевое слово':
+        keyboard = telebot.types.ReplyKeyboardMarkup(True)
+        for x in news_q(message.from_user.id):
+            if message.text.find("Удалить") == 0:
+                x = "Удалить " + x
+            keyboard.row(x)
+        bot.send_message(message.chat.id, "Выберите подборку", reply_markup=keyboard)
+    elif message.text in category:
+        for x in news_api_category(message.text)["articles"]:
+            bot.send_message(message.chat.id, x["title"], reply_markup=main())
+    elif message.text in news_q(message.from_user.id):
+        for x in news_api_q(message.text)["articles"]:
+            bot.send_message(message.chat.id, x["title"], reply_markup=main())
+    elif message.text.find("Удалить") == 0:
+        if message.text.split()[1] in news_category(message.from_user.id):
+            del_category(message.from_user.id, message.text.split()[1])
+        if message.text.split()[1] in news_q(message.from_user.id):
+            del_q(message.from_user.id, message.text.split()[1])
+        bot.send_message(message.chat.id, "Подписка удалена", reply_markup=main())
+    elif message.text == 'Добавить подписку':
+        keyboard = telebot.types.ReplyKeyboardMarkup(True)
+        for x in category:
+            if not x in news_category(message.from_user.id):
+                keyboard.row("Добавить " + x)
+        bot.send_message(message.chat.id, "Выберите подписку", reply_markup=keyboard)
+    elif message.text.find("Добавить") == 0:
+        if message.text.split()[1] in category:
+            add_category(message.from_user.id, message.text.split()[1])
+        bot.send_message(message.chat.id, "Подписка добавлена", reply_markup=main())
     else:
         bot.send_message(message.chat.id, 'Я тебя не понимаю', reply_markup=main())
+
 bot.polling()
-
-
-
-def news_user(id):
-    connection = sqlite3.connect('bot.db')
-    cursor = connection.cursor()
-    cursor.execute(f'''SELECT category FROM categories WHERE JOIN users ON users.id = users.id WHERE users.id = {id}''')
-    connection.commit()
-    connection.close()
-
-def news_api(q, category):
-    newsapi = NewsApiClient(api_key=news_api_token)
-
-    # через запятую 'bbc-news,the-verge'
-    category = 'business, entertainment, general, health, science, sports, technology'
-    q = 'bitcoin'
-    top_headlines = newsapi.get_top_headlines(q=q,
-                                             category=category,
-                                             sortBy='relevancy',
-                                             pageSize=10,
-                                             page=1)
-
-    sources = newsapi.get_sources()
-    return sources
