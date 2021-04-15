@@ -2,8 +2,8 @@ import sqlite3, telebot
 from telebot import types
 from newsapi import NewsApiClient
 
-telebot_token = "1794433387:AAGsLnL2AYlbBOoI5SFTuqqzU5ltMQ99P2U"
-news_api_token = "51f3bc1ce6384971b2e00b29d92c5e98"
+telebot_token = ""
+news_api_token = ""
 category = {'business', 'entertainment', 'general', 'health', 'science', 'sports', 'technology'}
 
 
@@ -56,21 +56,28 @@ def news_q(id):
 def del_category(id, category):
     connection = sqlite3.connect('bot.db')
     cursor = connection.cursor()
-    cursor.execute(f'''DELETE FROM categories WHERE category = "{category}" and user_id = (SELECT id FROM users WHERE user={id})''')
+    cursor.execute(f'''DELETE FROM categories WHERE category = "{category}" and user_id = (SELECT id FROM users WHERE user = {id})''')
     connection.commit()
     connection.close()
 
 def del_q(id, q):
     connection = sqlite3.connect('bot.db')
     cursor = connection.cursor()
-    cursor.execute(f'''DELETE FROM keywords WHERE keyword = "{q}" and user_id = (SELECT id FROM users WHERE user={id})''')
+    cursor.execute(f'''DELETE FROM keywords WHERE keyword = "{q}" and user_id = (SELECT id FROM users WHERE user = {id})''')
     connection.commit()
     connection.close()
 
 def add_category(id, category):
     connection = sqlite3.connect('bot.db')
     cursor = connection.cursor()
-    cursor.execute(f'''INSERT INTO categories (category, user_id) VALUES ("{category}", (SELECT id FROM users WHERE user={id}))''')
+    cursor.execute(f'''INSERT INTO categories (category, user_id) VALUES ("{category}", (SELECT id FROM users WHERE user = {id}))''')
+    connection.commit()
+    connection.close()
+
+def add_q(id, q):
+    connection = sqlite3.connect('bot.db')
+    cursor = connection.cursor()
+    cursor.execute(f'''INSERT INTO keywords (keyword, user_id) VALUES ("{q}", (SELECT id FROM users WHERE user = {id}))''')
     connection.commit()
     connection.close()
 
@@ -112,21 +119,26 @@ def start(message):
     user_name = message.from_user.username
     bot.send_message(message.chat.id, 'Привет, ' + str(user_name), reply_markup=main())
 
+flag = False
 @bot.message_handler(content_types=['text'])
 def cont(message):
+    global flag
     if message.text == 'Подписки по категориям':
         keyboard = telebot.types.ReplyKeyboardMarkup(True)
         keyboard.row('Посмотреть подписку')
         keyboard.row('Добавить подписку', 'Удалить подписку')
         bot.send_message(message.chat.id, "Выберите действие", reply_markup=keyboard)
+
     elif message.text == 'Подписки по ключевым словам':
         keyboard = telebot.types.ReplyKeyboardMarkup(True)
         keyboard.row('Посмотреть подборку')
         keyboard.row('Добавить ключевое слово', 'Удалить ключевое слово')
         bot.send_message(message.chat.id, "Выберите действие", reply_markup=keyboard)
+
     elif message.text == 'Добавить ключевое слово':
         bot.send_message(message.chat.id, "Введите новое ключевое слово:")
-        print(message.chat.id-1)
+        flag = True
+
     elif message.text == 'Посмотреть подписку' or message.text == 'Удалить подписку':
         keyboard = telebot.types.ReplyKeyboardMarkup(True)
         for x in news_category(message.from_user.id):
@@ -134,6 +146,7 @@ def cont(message):
                 x = "Удалить " + x
             keyboard.row(x)
         bot.send_message(message.chat.id, "Выберите подписку", reply_markup=keyboard)
+
     elif message.text == 'Посмотреть подборку' or message.text == 'Удалить ключевое слово':
         keyboard = telebot.types.ReplyKeyboardMarkup(True)
         for x in news_q(message.from_user.id):
@@ -141,28 +154,45 @@ def cont(message):
                 x = "Удалить " + x
             keyboard.row(x)
         bot.send_message(message.chat.id, "Выберите подборку", reply_markup=keyboard)
+
     elif message.text in category:
-        for x in news_api_category(message.text)["articles"]:
+        news = news_api_category(message.text)
+        if news['totalResults'] == 0:
+            bot.send_message(message.chat.id, "Новостей нет", reply_markup=main())
+        for x in news["articles"]:
             bot.send_message(message.chat.id, x["title"], reply_markup=main())
+
     elif message.text in news_q(message.from_user.id):
-        for x in news_api_q(message.text)["articles"]:
+        news = news_api_q(message.text)
+        if news['totalResults'] == 0:
+            bot.send_message(message.chat.id, "Новостей нет", reply_markup=main())
+        for x in news["articles"]:
             bot.send_message(message.chat.id, x["title"], reply_markup=main())
+
     elif message.text.find("Удалить") == 0:
         if message.text.split()[1] in news_category(message.from_user.id):
             del_category(message.from_user.id, message.text.split()[1])
         if message.text.split()[1] in news_q(message.from_user.id):
             del_q(message.from_user.id, message.text.split()[1])
         bot.send_message(message.chat.id, "Подписка удалена", reply_markup=main())
+
     elif message.text == 'Добавить подписку':
         keyboard = telebot.types.ReplyKeyboardMarkup(True)
         for x in category:
             if not x in news_category(message.from_user.id):
                 keyboard.row("Добавить " + x)
         bot.send_message(message.chat.id, "Выберите подписку", reply_markup=keyboard)
+
     elif message.text.find("Добавить") == 0:
         if message.text.split()[1] in category:
             add_category(message.from_user.id, message.text.split()[1])
-        bot.send_message(message.chat.id, "Подписка добавлена", reply_markup=main())
+            bot.send_message(message.chat.id, "Подписка добавлена", reply_markup=main())
+    
+    elif flag:
+        if not message.text in news_q(message.from_user.id):
+            add_q(message.from_user.id, message.text)
+            bot.send_message(message.chat.id, "Ключевое слово добавлено", reply_markup=main())
+        flag = False
     else:
         bot.send_message(message.chat.id, 'Я тебя не понимаю', reply_markup=main())
 
